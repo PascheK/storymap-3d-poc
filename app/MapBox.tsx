@@ -13,14 +13,22 @@ type PickInfo = {
   lat?: number;
 };
 
+type MouseCoordinates = {
+  lng: number;
+  lat: number;
+};
+
 const MapBox = () => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.Camera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const originalMaterialsRef = useRef<Map<string, THREE.Material>>(new Map());
   const [pickedInfo, setPickedInfo] = useState<PickInfo | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [mouseCoords, setMouseCoords] = useState<MouseCoordinates | null>(null);
+  const [materialMode, setMaterialMode] = useState<'original' | 'heatmap' | 'xray'>('original');
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -92,10 +100,26 @@ const MapBox = () => {
         modelGroup = new THREE.Group();
         modelGroup.add(gltf.scene);
         scene.add(modelGroup);
+        
+        // Store original materials
+        gltf.scene.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.material) {
+            originalMaterialsRef.current.set(child.uuid, child.material.clone());
+          }
+        });
+        
         scene.updateMatrixWorld(true);
       });
       loader.load("/models/OID_2/esriGeometryMultiPatch.glb", (gltf) => {
         scene.add(gltf.scene);
+        
+        // Store original materials
+        gltf.scene.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.material) {
+            originalMaterialsRef.current.set(child.uuid, child.material.clone());
+          }
+        });
+        
         scene.updateMatrixWorld(true);
       });
       const renderer = new THREE.WebGLRenderer({
@@ -124,6 +148,12 @@ const MapBox = () => {
             e: mapboxgl.MapMouseEvent,
             isClick: boolean
           ) => {
+            // Update mouse coordinates
+            setMouseCoords({
+              lng: e.lngLat.lng,
+              lat: e.lngLat.lat,
+            });
+
             const canvas = map.getCanvas();
             const rect = canvas.getBoundingClientRect();
             const x = e.point.x;
@@ -179,8 +209,8 @@ const MapBox = () => {
                   y: obj.position.y,
                   z: obj.position.z,
                 },
-                lon: modelOrigin[0],
-                lat: modelOrigin[1],
+                lon: e.lngLat.lng,
+                lat: e.lngLat.lat,
               });
             }
           };
@@ -307,15 +337,17 @@ const MapBox = () => {
     setIsAnimating(true);
 
     const map = mapRef.current;
-    const currentBearing = map.getBearing();
+    const startBearing = map.getBearing();
+    const steps = 36; // 36 steps of 10 degrees each
+    const degreesPerStep = 10;
+    const durationPerStep = 3000 / steps;
 
-    await new Promise((resolve) => {
-      map.easeTo({
-        bearing: currentBearing + 360,
-        duration: 3000,
+    for (let i = 0; i < steps; i++) {
+      await new Promise<void>((resolve) => {
+        map.setBearing(startBearing + degreesPerStep * (i + 1));
+        setTimeout(() => resolve(), durationPerStep);
       });
-      setTimeout(resolve, 3100);
-    });
+    }
 
     setIsAnimating(false);
   };
@@ -332,24 +364,100 @@ const MapBox = () => {
     }
   };
 
-  const toggleWireframe = () => {
-    if (sceneRef.current) {
-      sceneRef.current.children.forEach((child) => {
-        if (child instanceof THREE.Group) {
-          child.children.forEach((mesh) => {
-            const m = mesh as THREE.Mesh;
-            if (m.material && 'wireframe' in m.material) {
-              (m.material as THREE.MeshStandardMaterial).wireframe = !(m.material as THREE.MeshStandardMaterial).wireframe;
-            }
+  const cycleMaterialMode = () => {
+    if (!sceneRef.current) return;
+    
+    const modes: Array<'original' | 'heatmap' | 'xray'> = ['original', 'heatmap', 'xray'];
+    const currentIndex = modes.indexOf(materialMode);
+    const nextMode = modes[(currentIndex + 1) % modes.length];
+    
+    sceneRef.current.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        if (nextMode === 'original') {
+          // Restore original material
+          const original = originalMaterialsRef.current.get(child.uuid);
+          if (original) {
+            child.material = original.clone();
+          }
+        } else if (nextMode === 'heatmap') {
+          // Heatmap gradient material
+          child.material = new THREE.MeshStandardMaterial({
+            color: new THREE.Color().setHSL(Math.random(), 0.8, 0.5),
+            emissive: new THREE.Color().setHSL(Math.random(), 0.8, 0.3),
+            emissiveIntensity: 0.5,
+            metalness: 0.3,
+            roughness: 0.7,
+          });
+        } else if (nextMode === 'xray') {
+          // X-ray transparent material
+          child.material = new THREE.MeshPhongMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide,
+            depthWrite: false,
           });
         }
-      });
-    }
+      }
+    });
+    
+    setMaterialMode(nextMode);
+  };
+
+  const toggleLighting = () => {
+    if (!sceneRef.current) return;
+    
+    sceneRef.current.children.forEach((child) => {
+      if (child instanceof THREE.DirectionalLight) {
+        child.visible = !child.visible;
+      }
+    });
+  };
+
+  const exportScreenshot = () => {
+    if (!rendererRef.current) return;
+    
+    const canvas = rendererRef.current.domElement;
+    const link = document.createElement('a');
+    link.download = `mapbox-3d-${Date.now()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
   };
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
+
+      {/* Mouse Coordinates Display */}
+      {mouseCoords && (
+        <div
+          style={{
+            position: "absolute",
+            top: 16,
+            left: 16,
+            backgroundColor: "rgba(0, 0, 0, 0.85)",
+            color: "#fff",
+            padding: "12px 16px",
+            borderRadius: "6px",
+            fontFamily: "monospace",
+            fontSize: "13px",
+            zIndex: 1000,
+            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3)",
+            border: "1px solid #2e89ff",
+            display: "flex",
+            gap: "16px",
+          }}
+        >
+          <div>
+            <span style={{ color: "#60a5fa" }}>Lng:</span>{" "}
+            <span style={{ fontWeight: "bold" }}>{mouseCoords.lng.toFixed(6)}</span>
+          </div>
+          <div>
+            <span style={{ color: "#60a5fa" }}>Lat:</span>{" "}
+            <span style={{ fontWeight: "bold" }}>{mouseCoords.lat.toFixed(6)}</span>
+          </div>
+        </div>
+      )}
 
       {/* DevTools Bar */}
       <div
@@ -384,7 +492,7 @@ const MapBox = () => {
             opacity: isAnimating ? 0.5 : 1,
           }}
         >
-          📏 Agrandir
+          Scale Up
         </button>
         <button
           onClick={() => scaleModel(-1)}
@@ -401,7 +509,7 @@ const MapBox = () => {
             opacity: isAnimating ? 0.5 : 1,
           }}
         >
-          📉 Réduire
+          Scale Down
         </button>
         <button
           onClick={resetScale}
@@ -418,7 +526,7 @@ const MapBox = () => {
             opacity: isAnimating ? 0.5 : 1,
           }}
         >
-          ↺ Reset Scale
+         Reset Scale
         </button>
 
         <div style={{ width: "100%", height: "1px", backgroundColor: "#2e89ff" }} />
@@ -438,7 +546,7 @@ const MapBox = () => {
             opacity: isAnimating ? 0.5 : 1,
           }}
         >
-          🚁 Vol Drone
+          Drone Flight
         </button>
         <button
           onClick={rotateCamera}
@@ -455,7 +563,7 @@ const MapBox = () => {
             opacity: isAnimating ? 0.5 : 1,
           }}
         >
-          🔄 Rotation 360°
+           Rotate 360°
         </button>
         <button
           onClick={resetCamera}
@@ -472,10 +580,10 @@ const MapBox = () => {
             opacity: isAnimating ? 0.5 : 1,
           }}
         >
-          🏠 Reset Caméra
+          Reset Camera
         </button>
         <button
-          onClick={toggleWireframe}
+          onClick={cycleMaterialMode}
           disabled={isAnimating}
           style={{
             padding: "8px 12px",
@@ -489,7 +597,41 @@ const MapBox = () => {
             opacity: isAnimating ? 0.5 : 1,
           }}
         >
-          🔲 Wireframe
+          🎨 Material: {materialMode === 'original' ? 'Default' : materialMode === 'heatmap' ? 'Heatmap' : 'X-Ray'}
+        </button>
+        <button
+          onClick={toggleLighting}
+          disabled={isAnimating}
+          style={{
+            padding: "8px 12px",
+            backgroundColor: "#ec4899",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: isAnimating ? "not-allowed" : "pointer",
+            fontSize: "12px",
+            fontWeight: "bold",
+            opacity: isAnimating ? 0.5 : 1,
+          }}
+        >
+          💡 Toggle Lights
+        </button>
+        <button
+          onClick={exportScreenshot}
+          disabled={isAnimating}
+          style={{
+            padding: "8px 12px",
+            backgroundColor: "#06b6d4",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: isAnimating ? "not-allowed" : "pointer",
+            fontSize: "12px",
+            fontWeight: "bold",
+            opacity: isAnimating ? 0.5 : 1,
+          }}
+        >
+          📸 Screenshot
         </button>
 
         {isAnimating && (
@@ -502,7 +644,7 @@ const MapBox = () => {
               fontSize: "12px",
             }}
           >
-            ⏳ Animation en cours...
+           Animation in progress...
           </div>
         )}
       </div>
@@ -534,7 +676,7 @@ const MapBox = () => {
               borderBottom: "1px solid #2e89ff",
             }}
           >
-            <strong>Bâtiment Info</strong>
+            <strong>Building Information</strong>
             <button
               onClick={() => setPickedInfo(null)}
               style={{
@@ -558,19 +700,19 @@ const MapBox = () => {
               </span>
             </div>
             <div style={{ marginTop: "8px" }}>
-              <span style={{ color: "#60a5fa" }}>Nom:</span>
+              <span style={{ color: "#60a5fa" }}>Name:</span>
               <br />
               <span>{pickedInfo.name}</span>
             </div>
             <div style={{ marginTop: "8px" }}>
-              <span style={{ color: "#60a5fa" }}>Coordonnées:</span>
+              <span style={{ color: "#60a5fa" }}>Coordinates:</span>
               <br />
-              <span>Lon: {pickedInfo.lon?.toFixed(6)}</span>
+              <span>Lng: {pickedInfo.lon?.toFixed(6)}</span>
               <br />
               <span>Lat: {pickedInfo.lat?.toFixed(6)}</span>
             </div>
             <div style={{ marginTop: "8px" }}>
-              <span style={{ color: "#60a5fa" }}>Position 3D:</span>
+              <span style={{ color: "#60a5fa" }}>3D Position:</span>
               <br />
               <span>X: {pickedInfo.position.x.toFixed(2)}</span>
               <br />
