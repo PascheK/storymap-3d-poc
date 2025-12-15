@@ -1,0 +1,248 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 744,
+      "max": [
+        5647.5966796875,
+        10.403599739074707,
+        4112.2353515625
+      ],
+      "min": [
+        -5541.955078125,
+        0.0,
+        -6338.20263671875
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 264,
+      "max": [
+        2456.794921875,
+        4.86359977722168,
+        -6651.373046875
+      ],
+      "min": [
+        -2118.454345703125,
+        0.0,
+        -7288.3154296875
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 14316,
+      "max": [
+        7515.1396484375,
+        34.06119918823242,
+        5799.59326171875
+      ],
+      "min": [
+        -7511.29638671875,
+        0.0,
+        -7966.40576171875
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 15960,
+      "max": [
+        7423.9462890625,
+        27.280000686645508,
+        7968.142578125
+      ],
+      "min": [
+        -7291.04150390625,
+        0.0,
+        -7255.9189453125
+      ],
+      "type": "VEC3"
+    }
+  ],
+  "asset": {
+    "generator": "Esri3DObject/4.4.3",
+    "version": "2.0"
+  },
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 8928,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 3168,
+      "byteOffset": 8928,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 171792,
+      "byteOffset": 12096,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 191520,
+      "byteOffset": 183888,
+      "target": 34962
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 375408,
+      "uri": "esriGeometryMultiPatch_ESRI3DODERIVED.bin"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "material_from_multipatch",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          1.0,
+          0.7372047901153564,
+          0.044552627950906754,
+          1.0
+        ],
+        "metallicFactor": 0.0
+      }
+    },
+    {
+      "doubleSided": true,
+      "name": "material_from_multipatch_1",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.000992374261841178,
+          0.29765263199806213,
+          0.5924380421638489,
+          1.0
+        ],
+        "metallicFactor": 0.0
+      }
+    },
+    {
+      "doubleSided": true,
+      "name": "material_from_multipatch_2",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.97430020570755,
+          0.29321613907814026,
+          0.00969632901251316,
+          1.0
+        ],
+        "metallicFactor": 0.0
+      }
+    },
+    {
+      "doubleSided": true,
+      "name": "material_from_multipatch_3",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.006584957242012024,
+          0.4259052872657776,
+          0.0,
+          1.0
+        ],
+        "metallicFactor": 0.0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "mesh_material_from_multipatch",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0
+          },
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "mesh_material_from_multipatch_1",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 1
+          },
+          "material": 1
+        }
+      ]
+    },
+    {
+      "name": "mesh_material_from_multipatch_2",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 2
+          },
+          "material": 2
+        }
+      ]
+    },
+    {
+      "name": "mesh_material_from_multipatch_3",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 3
+          },
+          "material": 3
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "children": [
+        1
+      ]
+    },
+    {
+      "mesh": 0
+    },
+    {
+      "children": [
+        3
+      ]
+    },
+    {
+      "mesh": 1
+    },
+    {
+      "children": [
+        5
+      ]
+    },
+    {
+      "mesh": 2
+    },
+    {
+      "children": [
+        7
+      ]
+    },
+    {
+      "mesh": 3
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        2,
+        4,
+        6
+      ]
+    }
+  ]
+}

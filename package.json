@@ -9,11 +9,21 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@arcgis/core": "^4.34.8",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.4.2",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.561.0",
+    "mapbox": "^1.0.0-beta10",
+    "mapbox-gl": "^3.17.0",
     "next": "16.0.10",
     "react": "19.2.1",
-    "react-dom": "19.2.1"
+    "react-dom": "19.2.1",
+    "react-leaflet": "^5.0.0",
+    "three": "^0.182.0"
   },
   "devDependencies": {
+    "@gltf-transform/cli": "^4.2.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

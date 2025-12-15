@@ -1,0 +1,303 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 137724,
+      "max": [
+        7846.39453125,
+        32.842498779296875,
+        8535.4169921875
+      ],
+      "min": [
+        -7816.97802734375,
+        0.0,
+        -8533.5830078125
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 5808,
+      "max": [
+        5875.7646484375,
+        16.656299591064453,
+        7630.09912109375
+      ],
+      "min": [
+        -5293.89697265625,
+        0.0,
+        -6924.98291015625
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 6348,
+      "max": [
+        6453.6884765625,
+        9.133399963378906,
+        5772.8857421875
+      ],
+      "min": [
+        -7571.45751953125,
+        0.0,
+        -7866.56689453125
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 108,
+      "max": [
+        2028.9114990234375,
+        6.44789981842041,
+        -2399.499755859375
+      ],
+      "min": [
+        2007.7060546875,
+        0.0,
+        -2418.183837890625
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 166320,
+      "max": [
+        7395.32080078125,
+        26.688600540161133,
+        8523.8212890625
+      ],
+      "min": [
+        -7842.306640625,
+        0.0,
+        -8496.9833984375
+      ],
+      "type": "VEC3"
+    }
+  ],
+  "asset": {
+    "generator": "Esri3DObject/4.4.3",
+    "version": "2.0"
+  },
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 1652688,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 69696,
+      "byteOffset": 1652688,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 76176,
+      "byteOffset": 1722384,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 1296,
+      "byteOffset": 1798560,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 1995840,
+      "byteOffset": 1799856,
+      "target": 34962
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 3795696,
+      "uri": "esriGeometryMultiPatch_ESRI3DODERIVED.bin"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "material_from_multipatch",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          1.0,
+          0.288815975189209,
+          0.0,
+          1.0
+        ],
+        "metallicFactor": 0.0
+      }
+    },
+    {
+      "doubleSided": true,
+      "name": "material_from_multipatch_1",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          1.0,
+          0.7372047901153564,
+          0.044552627950906754,
+          1.0
+        ],
+        "metallicFactor": 0.0
+      }
+    },
+    {
+      "doubleSided": true,
+      "name": "material_from_multipatch_2",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.000992374261841178,
+          0.29765263199806213,
+          0.5924380421638489,
+          1.0
+        ],
+        "metallicFactor": 0.0
+      }
+    },
+    {
+      "doubleSided": true,
+      "name": "material_from_multipatch_3",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.4819522500038147,
+          0.2233104109764099,
+          0.06575387716293335,
+          1.0
+        ],
+        "metallicFactor": 0.0
+      }
+    },
+    {
+      "doubleSided": true,
+      "name": "material_from_multipatch_4",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.006584957242012024,
+          0.4259052872657776,
+          0.0,
+          1.0
+        ],
+        "metallicFactor": 0.0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "mesh_material_from_multipatch",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0
+          },
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "mesh_material_from_multipatch_1",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 1
+          },
+          "material": 1
+        }
+      ]
+    },
+    {
+      "name": "mesh_material_from_multipatch_2",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 2
+          },
+          "material": 2
+        }
+      ]
+    },
+    {
+      "name": "mesh_material_from_multipatch_3",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 3
+          },
+          "material": 3
+        }
+      ]
+    },
+    {
+      "name": "mesh_material_from_multipatch_4",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 4
+          },
+          "material": 4
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "children": [
+        1
+      ]
+    },
+    {
+      "mesh": 0
+    },
+    {
+      "children": [
+        3
+      ]
+    },
+    {
+      "mesh": 1
+    },
+    {
+      "children": [
+        5
+      ]
+    },
+    {
+      "mesh": 2
+    },
+    {
+      "children": [
+        7
+      ]
+    },
+    {
+      "mesh": 3
+    },
+    {
+      "children": [
+        9
+      ]
+    },
+    {
+      "mesh": 4
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        2,
+        4,
+        6,
+        8
+      ]
+    }
+  ]
+}
