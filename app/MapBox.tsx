@@ -1,7 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
-
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
@@ -55,12 +54,12 @@ const MapBox = () => {
           showLandmarkIconLabels: false,
         },
       },
-
       zoom: 18,
       center: [32.55, 15.51666667],
       pitch: 60,
       antialias: true,
     });
+
     const modelOrigin: [number, number] = [32.55, 15.51666667];
     const modelAltitude = 0;
     const modelRotate = [Math.PI / 2, 0, 0];
@@ -174,8 +173,8 @@ const MapBox = () => {
             mouse.y = -(y / rect.height) * 2 + 1;
 
             // Build ray from near/far unprojected points
-            const pNear = unproject(mouse.x, mouse.y, -1); // clip space near
-            const pFar = unproject(mouse.x, mouse.y, 1); // clip space far
+            const pNear = unproject(mouse.x, mouse.y, -1);
+            const pFar = unproject(mouse.x, mouse.y, 1);
             const dir = pFar.clone().sub(pNear).normalize();
             raycaster.set(pNear, dir);
             scene.updateMatrixWorld(true);
@@ -266,10 +265,8 @@ const MapBox = () => {
             .multiply(rotationY)
             .multiply(rotationZ);
 
-          // Combined view-projection (Mapbox supplies view * projection)
           const viewProj = m.multiply(l);
           camera.projectionMatrix = viewProj;
-          // Keep inverse for unproject in pointer handlers
           invViewProj.copy(viewProj).invert();
           renderer.resetState();
           renderer.render(scene, camera);
@@ -278,12 +275,12 @@ const MapBox = () => {
       };
     };
 
-    map.on("style.load", () => {
-      // Add GeoJSON source for buildings (public/models/...)
+    map.on("style.load", async () => {
+      // Add GeoJSON source for buildings
       if (!map.getSource("geojson-data")) {
         map.addSource("geojson-data", {
           type: "geojson",
-          data: "/models/all_buildings__FeaturesToJSO.geojson",
+          data: "/models/TOR_buildings__FeaturesToJSO.geojson",
         });
       }
 
@@ -294,11 +291,10 @@ const MapBox = () => {
           type: "fill-extrusion",
           source: "geojson-data",
           paint: {
-            // Extrude using height property; amplify small values for visibility
             "fill-extrusion-height": [
               "*",
               ["coalesce", ["get", "height"], 1],
-              
+              80,
             ],
             "fill-extrusion-base": 0,
             "fill-extrusion-color": [
@@ -334,20 +330,24 @@ const MapBox = () => {
         const feature = e.features && e.features[0];
         if (!feature || feature.id === undefined) return;
 
-        // Update mouse coords for UI
         setMouseCoords({ lng: e.lngLat.lng, lat: e.lngLat.lat });
 
-        // Clear previous hover
         if (hoveredBuildingIdRef.current !== null) {
           map.setFeatureState(
-            { source: "geojson-data", id: hoveredBuildingIdRef.current },
+            {
+              source: "geojson-data",
+              id: hoveredBuildingIdRef.current,
+            },
             { hover: false }
           );
         }
 
         hoveredBuildingIdRef.current = feature.id as string | number;
         map.setFeatureState(
-          { source: "geojson-data", id: hoveredBuildingIdRef.current },
+          {
+            source: "geojson-data",
+            id: hoveredBuildingIdRef.current,
+          },
           { hover: true }
         );
       });
@@ -355,7 +355,10 @@ const MapBox = () => {
       map.on("mouseleave", "geojson-data-buildings", () => {
         if (hoveredBuildingIdRef.current !== null) {
           map.setFeatureState(
-            { source: "geojson-data", id: hoveredBuildingIdRef.current },
+            {
+              source: "geojson-data",
+              id: hoveredBuildingIdRef.current,
+            },
             { hover: false }
           );
           hoveredBuildingIdRef.current = null;
@@ -397,10 +400,18 @@ const MapBox = () => {
 
     const geoLayerId = "geojson-data-buildings";
     if (map.getLayer(geoLayerId)) {
-      map.setLayoutProperty(geoLayerId, "visibility", showGeojson ? "visible" : "none");
+      map.setLayoutProperty(
+        geoLayerId,
+        "visibility",
+        showGeojson ? "visible" : "none"
+      );
       if (!showGeojson && hoveredBuildingIdRef.current !== null) {
         map.setFeatureState(
-          { source: "geojson-data", id: hoveredBuildingIdRef.current },
+          {
+            source: "geojson-data",
+            sourceLayer: "buildings",
+            id: hoveredBuildingIdRef.current,
+          },
           { hover: false }
         );
         hoveredBuildingIdRef.current = null;
@@ -409,7 +420,11 @@ const MapBox = () => {
 
     const modelLayerId = "3d-model";
     if (map.getLayer(modelLayerId)) {
-      map.setLayoutProperty(modelLayerId, "visibility", showModels ? "visible" : "none");
+      map.setLayoutProperty(
+        modelLayerId,
+        "visibility",
+        showModels ? "visible" : "none"
+      );
     }
   }, [showGeojson, showModels]);
 
@@ -473,7 +488,7 @@ const MapBox = () => {
 
     const map = mapRef.current;
     const startBearing = map.getBearing();
-    const steps = 36; // 36 steps of 10 degrees each
+    const steps = 36;
     const degreesPerStep = 10;
     const durationPerStep = 3000 / steps;
 
@@ -513,13 +528,11 @@ const MapBox = () => {
     sceneRef.current.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         if (nextMode === "original") {
-          // Restore original material
           const original = originalMaterialsRef.current.get(child.uuid);
           if (original) {
             child.material = original.clone();
           }
         } else if (nextMode === "heatmap") {
-          // Heatmap gradient material
           child.material = new THREE.MeshStandardMaterial({
             color: new THREE.Color().setHSL(Math.random(), 0.8, 0.5),
             emissive: new THREE.Color().setHSL(Math.random(), 0.8, 0.3),
@@ -528,7 +541,6 @@ const MapBox = () => {
             roughness: 0.7,
           });
         } else if (nextMode === "xray") {
-          // X-ray transparent material
           child.material = new THREE.MeshPhongMaterial({
             color: 0x00ffff,
             transparent: true,
@@ -567,7 +579,6 @@ const MapBox = () => {
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* Mouse Coordinates Display */}
       {mouseCoords && (
         <div
           style={{
@@ -602,7 +613,6 @@ const MapBox = () => {
         </div>
       )}
 
-      {/* DevTools Bar */}
       <div
         style={{
           position: "absolute",
@@ -798,9 +808,7 @@ const MapBox = () => {
             flexWrap: "wrap",
           }}
         >
-          <span style={{ fontWeight: "bold", color: "#60a5fa" }}>
-            Layers:
-          </span>
+          <span style={{ fontWeight: "bold", color: "#60a5fa" }}>Layers:</span>
           <button
             onClick={() => setShowModels((v) => !v)}
             style={{
