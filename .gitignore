@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+app/MapBox.tsx
+public/models/data.ld.geojson
+public/models/tileset-create.json
+public/models/recipe.json
+public/models/data.geojson

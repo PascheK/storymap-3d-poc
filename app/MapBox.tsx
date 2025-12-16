@@ -1,46 +1,37 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
+
+import React, { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
-import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
-type PickInfo = {
-  uuid: string;
-  name: string;
-  position: { x: number; y: number; z: number };
-  lon?: number;
-  lat?: number;
-};
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
-type MouseCoordinates = {
-  lng: number;
-  lat: number;
-};
+const TILESET_URL = "mapbox://paschek7.khartoum_buildings_v1";
+const SOURCE_ID = "khartoum";
+const SOURCE_LAYER = "buildings";
+const LAYER_ID = "khartoum-3d";
 
-const MapBox = () => {
-  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+// Tu peux ajuster (tes heights semblent petites dans l'échantillon)
+const HEIGHT_SCALE = 1;
+
+export default function KhartoumBuildingsMap() {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.Camera | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const originalMaterialsRef = useRef<Map<string, THREE.Material>>(new Map());
-  const hoveredBuildingIdRef = useRef<string | number | null>(null);
-  const [pickedInfo, setPickedInfo] = useState<PickInfo | null>(null);
-  const [isAnimating, setIsAnimating] = useState(false);
-  const [mouseCoords, setMouseCoords] = useState<MouseCoordinates | null>(null);
-  const [materialMode, setMaterialMode] = useState<
-    "original" | "heatmap" | "xray"
-  >("original");
-  const [showModels, setShowModels] = useState(true);
-  const [showGeojson, setShowGeojson] = useState(true);
+
+  // Pour hover highlight
+  const hoveredIdRef = useRef<number | null>(null);
+  const [isAnimating, setIsAnimating] = React.useState(false);
 
   useEffect(() => {
-    if (!mapContainerRef.current) return;
-    mapboxgl.accessToken =
-      "pk.eyJ1IjoicGFzY2hlazciLCJhIjoiY200NzU2Z2JzMDI1dzJscXhtOWNzeXoxdiJ9.oZjq_yoLC0G50QlQZTUdoQ";
+    if (!containerRef.current) return;
+    if (mapRef.current) return; // évite double init en dev
+
+    if (!mapboxgl.accessToken) {
+      console.error("Missing NEXT_PUBLIC_MAPBOX_TOKEN");
+      return;
+    }
 
     const map = new mapboxgl.Map({
-      container: mapContainerRef.current,
+      container: containerRef.current,
       style: "mapbox://styles/mapbox/standard-satellite",
       config: {
         basemap: {
@@ -60,401 +51,201 @@ const MapBox = () => {
       antialias: true,
     });
 
-    const modelOrigin: [number, number] = [32.55, 15.51666667];
-    const modelAltitude = 0;
-    const modelRotate = [Math.PI / 2, 0, 0];
+    mapRef.current = map;
 
-    const modelAsMercatorCoordinate = mapboxgl.MercatorCoordinate.fromLngLat(
-      modelOrigin,
-      modelAltitude
-    );
-
-    const modelTransform = {
-      translateX: modelAsMercatorCoordinate.x,
-      translateY: modelAsMercatorCoordinate.y,
-      translateZ: modelAsMercatorCoordinate.z,
-      rotateX: modelRotate[0],
-      rotateY: modelRotate[1],
-      rotateZ: modelRotate[2],
-      scale: modelAsMercatorCoordinate.meterInMercatorCoordinateUnits(),
+    const setCursorPointer = () => {
+      map.getCanvas().style.cursor = "pointer";
+    };
+    const resetCursor = () => {
+      map.getCanvas().style.cursor = "";
     };
 
-    const createCustomLayer = (map: mapboxgl.Map) => {
-      const camera = new THREE.Camera();
-      const scene = new THREE.Scene();
-      const raycaster = new THREE.Raycaster();
-      const mouse = new THREE.Vector2();
-      const invViewProj = new THREE.Matrix4();
-      let hovered: THREE.Mesh | null = null;
-      let modelGroup: THREE.Group | null = null;
-
-      // Store refs for dev tools
-      sceneRef.current = scene;
-      cameraRef.current = camera;
-
-      const directionalLight1 = new THREE.DirectionalLight(0xffffff);
-      directionalLight1.position.set(0, -70, 100).normalize();
-      scene.add(directionalLight1);
-
-      const directionalLight2 = new THREE.DirectionalLight(0xffffff);
-      directionalLight2.position.set(0, 70, 100).normalize();
-      scene.add(directionalLight2);
-
-      const loader = new GLTFLoader();
-      loader.load("/models/OID_1/esriGeometryMultiPatch.glb", (gltf) => {
-        modelGroup = new THREE.Group();
-        modelGroup.add(gltf.scene);
-        scene.add(modelGroup);
-
-        // Store original materials
-        gltf.scene.traverse((child) => {
-          if (child instanceof THREE.Mesh && child.material) {
-            originalMaterialsRef.current.set(
-              child.uuid,
-              child.material.clone()
-            );
-          }
-        });
-
-        scene.updateMatrixWorld(true);
-      });
-      loader.load("/models/OID_2/esriGeometryMultiPatch.glb", (gltf) => {
-        scene.add(gltf.scene);
-
-        // Store original materials
-        gltf.scene.traverse((child) => {
-          if (child instanceof THREE.Mesh && child.material) {
-            originalMaterialsRef.current.set(
-              child.uuid,
-              child.material.clone()
-            );
-          }
-        });
-
-        scene.updateMatrixWorld(true);
-      });
-      const renderer = new THREE.WebGLRenderer({
-        canvas: map.getCanvas(),
-        context: map.painter.context.gl,
-        antialias: true,
-      });
-
-      renderer.autoClear = false;
-      rendererRef.current = renderer;
-
-      return {
-        id: "3d-model",
-        type: "custom",
-        renderingMode: "3d",
-        onAdd: () => {
-          const unproject = (ndcX: number, ndcY: number, ndcZ: number) => {
-            const v = new THREE.Vector4(ndcX, ndcY, ndcZ, 1).applyMatrix4(
-              invViewProj
-            );
-            v.divideScalar(v.w || 1);
-            return new THREE.Vector3(v.x, v.y, v.z);
-          };
-
-          const handlePointer = (
-            e: mapboxgl.MapMouseEvent,
-            isClick: boolean
-          ) => {
-            // Update mouse coordinates
-            setMouseCoords({
-              lng: e.lngLat.lng,
-              lat: e.lngLat.lat,
-            });
-
-            const canvas = map.getCanvas();
-            const rect = canvas.getBoundingClientRect();
-            const x = e.point.x;
-            const y = e.point.y;
-            mouse.x = (x / rect.width) * 2 - 1;
-            mouse.y = -(y / rect.height) * 2 + 1;
-
-            // Build ray from near/far unprojected points
-            const pNear = unproject(mouse.x, mouse.y, -1);
-            const pFar = unproject(mouse.x, mouse.y, 1);
-            const dir = pFar.clone().sub(pNear).normalize();
-            raycaster.set(pNear, dir);
-            scene.updateMatrixWorld(true);
-
-            const intersects = raycaster.intersectObjects(scene.children, true);
-
-            // Hover highlight
-            if (!isClick) {
-              if (
-                hovered &&
-                hovered.material &&
-                (hovered.material as THREE.MeshStandardMaterial).emissive
-              ) {
-                (
-                  hovered.material as THREE.MeshStandardMaterial
-                ).emissive.setHex(0x000000);
-              }
-              hovered = null;
-              if (intersects.length > 0) {
-                const obj = intersects[0].object as THREE.Mesh;
-                hovered = obj;
-                if (
-                  obj.material &&
-                  (obj.material as THREE.MeshStandardMaterial).emissive
-                ) {
-                  (obj.material as THREE.MeshStandardMaterial).emissive.setHex(
-                    0x2e89ff
-                  );
-                }
-              }
-            }
-
-            // Click handler
-            if (isClick && intersects.length > 0) {
-              e.preventDefault();
-              const obj = intersects[0].object as THREE.Mesh;
-              console.log(obj);
-              setPickedInfo({
-                uuid: obj.uuid,
-                name: obj.name || "Unnamed",
-                position: {
-                  x: obj.position.x,
-                  y: obj.position.y,
-                  z: obj.position.z,
-                },
-                lon: e.lngLat.lng,
-                lat: e.lngLat.lat,
-              });
-            }
-          };
-
-          map.on("mousemove", (e: mapboxgl.MapMouseEvent) =>
-            handlePointer(e, false)
-          );
-          map.on("click", (e: mapboxgl.MapMouseEvent) =>
-            handlePointer(e, true)
-          );
-        },
-        render: (gl: WebGLRenderingContext, matrix: number[]) => {
-          const rotationX = new THREE.Matrix4().makeRotationAxis(
-            new THREE.Vector3(1, 0, 0),
-            modelTransform.rotateX
-          );
-          const rotationY = new THREE.Matrix4().makeRotationAxis(
-            new THREE.Vector3(0, 1, 0),
-            modelTransform.rotateY
-          );
-          const rotationZ = new THREE.Matrix4().makeRotationAxis(
-            new THREE.Vector3(0, 0, 1),
-            modelTransform.rotateZ
-          );
-
-          const m = new THREE.Matrix4().fromArray(matrix);
-          const l = new THREE.Matrix4()
-            .makeTranslation(
-              modelTransform.translateX,
-              modelTransform.translateY,
-              modelTransform.translateZ
-            )
-            .scale(
-              new THREE.Vector3(
-                modelTransform.scale,
-                -modelTransform.scale,
-                modelTransform.scale
-              )
-            )
-            .multiply(rotationX)
-            .multiply(rotationY)
-            .multiply(rotationZ);
-
-          const viewProj = m.multiply(l);
-          camera.projectionMatrix = viewProj;
-          invViewProj.copy(viewProj).invert();
-          renderer.resetState();
-          renderer.render(scene, camera);
-          map.triggerRepaint();
-        },
-      };
+    const clearHoverState = () => {
+      const prev = hoveredIdRef.current;
+      if (prev !== null) {
+        map.setFeatureState(
+          { source: SOURCE_ID, sourceLayer: SOURCE_LAYER, id: prev },
+          { hover: false }
+        );
+        hoveredIdRef.current = null;
+      }
     };
 
-    map.on("style.load", async () => {
-      // Add GeoJSON source for buildings
-      if (!map.getSource("geojson-data")) {
-        map.addSource("geojson-data", {
-          type: "geojson",
-          data: "/models/TOR_buildings__FeaturesToJSO.geojson",
+    map.on("load", () => {
+      // Source: tileset Mapbox
+      if (!map.getSource(SOURCE_ID)) {
+        map.addSource(SOURCE_ID, {
+          type: "vector",
+          url: TILESET_URL,
         });
       }
 
-      // Add a fill-extrusion layer to render buildings with their polygon footprint and height
-      if (!map.getLayer("geojson-data-buildings")) {
+      // Layer 3D
+      if (!map.getLayer(LAYER_ID)) {
         map.addLayer({
-          id: "geojson-data-buildings",
+          id: LAYER_ID,
           type: "fill-extrusion",
-          source: "geojson-data",
+          source: SOURCE_ID,
+          "source-layer": SOURCE_LAYER,
+          minzoom: 13,
           paint: {
-            "fill-extrusion-height": [
-              "*",
-              ["coalesce", ["get", "height"], 1],
-              80,
-            ],
-            "fill-extrusion-base": 0,
+            // Couleur: hover -> blanc, sinon selon status
             "fill-extrusion-color": [
               "case",
               ["boolean", ["feature-state", "hover"], false],
-              "#2e89ff",
+              "#ffffff",
               [
                 "match",
                 ["get", "status"],
                 "undamaged",
-                "#3cb371",
+                "#2ecc71",
                 "damaged",
-                "#f59e0b",
+                "#f39c12",
                 "destroyed",
-                "#ef4444",
-                "#2e89ff",
+                "#e74c3c",
+                /* default */ "#95a5a6",
               ],
             ],
-            "fill-extrusion-opacity": 0.9,
+
+            // Hauteur 3D
+            "fill-extrusion-height": [
+              "*",
+              ["to-number", ["coalesce", ["get", "height"], 0]],
+              HEIGHT_SCALE,
+            ],
+
+            // Base (si tu as un champ baseHeight un jour, tu peux le mettre ici)
+            "fill-extrusion-base": 0,
+
+            "fill-extrusion-opacity": 0.85,
           },
         });
       }
 
-      // Log when the source is actually loaded
-      map.once("sourcedata", (e) => {
-        if (e.sourceId === "geojson-data" && e.isSourceLoaded) {
-          console.log("GeoJSON source loaded: geojson-data");
-        }
+      // Interactions
+      map.on("mouseenter", LAYER_ID, setCursorPointer);
+      map.on("mouseleave", LAYER_ID, () => {
+        resetCursor();
+        clearHoverState();
       });
 
-      // Highlight + click for GeoJSON buildings
-      map.on("mousemove", "geojson-data-buildings", (e) => {
-        const feature = e.features && e.features[0];
-        if (!feature || feature.id === undefined) return;
+      map.on("mousemove", LAYER_ID, (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
 
-        setMouseCoords({ lng: e.lngLat.lng, lat: e.lngLat.lat });
+        // NOTE: l'id vient de la recipe (features.id = OBJECTID)
+        const id = Number(f.id);
+        if (!Number.isFinite(id)) return;
 
-        if (hoveredBuildingIdRef.current !== null) {
+        const prev = hoveredIdRef.current;
+        if (prev !== null && prev !== id) {
           map.setFeatureState(
-            {
-              source: "geojson-data",
-              id: hoveredBuildingIdRef.current,
-            },
+            { source: SOURCE_ID, sourceLayer: SOURCE_LAYER, id: prev },
             { hover: false }
           );
         }
 
-        hoveredBuildingIdRef.current = feature.id as string | number;
+        hoveredIdRef.current = id;
         map.setFeatureState(
-          {
-            source: "geojson-data",
-            id: hoveredBuildingIdRef.current,
-          },
+          { source: SOURCE_ID, sourceLayer: SOURCE_LAYER, id },
           { hover: true }
         );
       });
 
-      map.on("mouseleave", "geojson-data-buildings", () => {
-        if (hoveredBuildingIdRef.current !== null) {
-          map.setFeatureState(
-            {
-              source: "geojson-data",
-              id: hoveredBuildingIdRef.current,
-            },
-            { hover: false }
-          );
-          hoveredBuildingIdRef.current = null;
-        }
-      });
+      map.on("click", LAYER_ID, (e) => {
+        const f = e.features?.[0];
+        console.log(f);
+        if (!f) return;
 
-      map.on("click", "geojson-data-buildings", (e) => {
-        const feature = e.features && e.features[0];
-        if (!feature) return;
-        const props = feature.properties || {};
-        setPickedInfo({
-          uuid: String(feature.id ?? "unknown"),
-          name: props.tor_category || "Building",
-          position: {
-            x: 0,
-            y: 0,
-            z: props.height || 0,
-          },
-          lon: e.lngLat.lng,
-          lat: e.lngLat.lat,
-        });
+        const p = (f.properties || {}) as Record<string, unknown>;
+        const objectId = p.OBJECTID ?? f.id ?? "—";
+        const status = p.status ?? "—";
+        // const category = p.tor_category ?? "—";
+        const height = p.height ?? "—";
+        // <div class="building-popup-row"><span class="building-popup-label">Category:</span> ${category}</div>
+        new mapboxgl.Popup({ closeButton: true, closeOnClick: true })
+          .setLngLat(e.lngLat)
+          .setHTML(
+            `
+            <div class="building-popup">
+              <div class="building-popup-title">Building</div>
+              <div class="building-popup-row"><span class="building-popup-label">OBJECTID:</span> ${objectId}</div>
+              <div class="building-popup-row"><span class="building-popup-label">Status:</span> ${status}</div>     
+              <div class="building-popup-row"><span class="building-popup-label">Height:</span> ${height}</div>
+            </div>
+          `
+          )
+          .addTo(map);
       });
-
-      // Add the Three.js custom layer for 3D models
-      if (!map.getLayer("3d-model")) {
-        map.addLayer(createCustomLayer(map) as mapboxgl.CustomLayerInterface);
-      }
     });
 
-    mapRef.current = map as mapboxgl.Map;
+    // Controls (optionnel)
+    map.addControl(
+      new mapboxgl.NavigationControl({ visualizePitch: true }),
+      "top-right"
+    );
 
-    return () => map.remove();
+    return () => {
+      try {
+        // Nettoyage handlers
+        map.off("mouseenter", LAYER_ID, setCursorPointer);
+        map.off("mouseleave", LAYER_ID, resetCursor);
+      } catch {
+        // ignore
+      }
+
+      // Clear hover state
+      try {
+        const prev = hoveredIdRef.current;
+        if (prev !== null) {
+          map.setFeatureState(
+            { source: SOURCE_ID, sourceLayer: SOURCE_LAYER, id: prev },
+            { hover: false }
+          );
+        }
+      } catch {
+        // ignore
+      }
+
+      map.remove();
+      mapRef.current = null;
+    };
   }, []);
 
-  // Sync layer visibility with toggles
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const geoLayerId = "geojson-data-buildings";
-    if (map.getLayer(geoLayerId)) {
-      map.setLayoutProperty(
-        geoLayerId,
-        "visibility",
-        showGeojson ? "visible" : "none"
-      );
-      if (!showGeojson && hoveredBuildingIdRef.current !== null) {
-        map.setFeatureState(
-          {
-            source: "geojson-data",
-            sourceLayer: "buildings",
-            id: hoveredBuildingIdRef.current,
-          },
-          { hover: false }
-        );
-        hoveredBuildingIdRef.current = null;
-      }
-    }
-
-    const modelLayerId = "3d-model";
-    if (map.getLayer(modelLayerId)) {
-      map.setLayoutProperty(
-        modelLayerId,
-        "visibility",
-        showModels ? "visible" : "none"
-      );
-    }
-  }, [showGeojson, showModels]);
-
-  // Dev tools actions
-  const scaleModel = (direction: number) => {
-    if (sceneRef.current) {
-      const child = sceneRef.current.children.find(
-        (c) => c instanceof THREE.Group && c.children.length > 0
-      ) as THREE.Group | undefined;
-      if (child) {
-        child.scale.multiplyScalar(direction > 0 ? 1.2 : 0.8);
-      }
+  const handleCameraReset = () => {
+    if (mapRef.current) {
+      mapRef.current.flyTo({
+        center: [32.55, 15.51666667],
+        zoom: 18,
+        pitch: 60,
+        bearing: 0,
+        duration: 1000,
+      });
     }
   };
 
-  const resetScale = () => {
-    if (sceneRef.current) {
-      const child = sceneRef.current.children.find(
-        (c) => c instanceof THREE.Group && c.children.length > 0
-      ) as THREE.Group | undefined;
-      if (child) {
-        child.scale.set(1, 1, 1);
-      }
-    }
-  };
-
-  const droneFlyCameraPath = async () => {
+  const handleCameraRotate = async () => {
     if (!mapRef.current || isAnimating) return;
     setIsAnimating(true);
+    const map = mapRef.current;
 
+    const startBearing = map.getBearing();
+    const steps = 36;
+    const degreesPerStep = 10;
+    const durationPerStep = 3000 / steps;
+
+    for (let i = 0; i < steps; i++) {
+      await new Promise<void>((resolve) => {
+        map.setBearing(startBearing + degreesPerStep * (i + 1));
+        setTimeout(() => resolve(), durationPerStep);
+      });
+    }
+    setIsAnimating(false);
+  };
+
+  const handleDroneFlightPath = async () => {
+    if (!mapRef.current || isAnimating) return;
+    setIsAnimating(true);
     const map = mapRef.current;
 
     const waypoints = [
@@ -478,462 +269,112 @@ const MapBox = () => {
         setTimeout(resolve, 2100);
       });
     }
-
     setIsAnimating(false);
   };
 
-  const rotateCamera = async () => {
-    if (!mapRef.current || isAnimating) return;
-    setIsAnimating(true);
-
-    const map = mapRef.current;
-    const startBearing = map.getBearing();
-    const steps = 36;
-    const degreesPerStep = 10;
-    const durationPerStep = 3000 / steps;
-
-    for (let i = 0; i < steps; i++) {
-      await new Promise<void>((resolve) => {
-        map.setBearing(startBearing + degreesPerStep * (i + 1));
-        setTimeout(() => resolve(), durationPerStep);
-      });
-    }
-
-    setIsAnimating(false);
-  };
-
-  const resetCamera = () => {
-    if (mapRef.current && !isAnimating) {
-      mapRef.current.flyTo({
-        center: [32.55, 15.51666667],
-        zoom: 18,
-        pitch: 60,
-        bearing: 0,
-        duration: 1500,
-      });
+  const handleZoomIn = () => {
+    if (mapRef.current) {
+      mapRef.current.zoomTo(mapRef.current.getZoom() + 1, { duration: 300 });
     }
   };
 
-  const cycleMaterialMode = () => {
-    if (!sceneRef.current) return;
-
-    const modes: Array<"original" | "heatmap" | "xray"> = [
-      "original",
-      "heatmap",
-      "xray",
-    ];
-    const currentIndex = modes.indexOf(materialMode);
-    const nextMode = modes[(currentIndex + 1) % modes.length];
-
-    sceneRef.current.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        if (nextMode === "original") {
-          const original = originalMaterialsRef.current.get(child.uuid);
-          if (original) {
-            child.material = original.clone();
-          }
-        } else if (nextMode === "heatmap") {
-          child.material = new THREE.MeshStandardMaterial({
-            color: new THREE.Color().setHSL(Math.random(), 0.8, 0.5),
-            emissive: new THREE.Color().setHSL(Math.random(), 0.8, 0.3),
-            emissiveIntensity: 0.5,
-            metalness: 0.3,
-            roughness: 0.7,
-          });
-        } else if (nextMode === "xray") {
-          child.material = new THREE.MeshPhongMaterial({
-            color: 0x00ffff,
-            transparent: true,
-            opacity: 0.3,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-          });
-        }
-      }
-    });
-
-    setMaterialMode(nextMode);
+  const handleZoomOut = () => {
+    if (mapRef.current) {
+      mapRef.current.zoomTo(mapRef.current.getZoom() - 1, { duration: 300 });
+    }
   };
 
-  const toggleLighting = () => {
-    if (!sceneRef.current) return;
-
-    sceneRef.current.children.forEach((child) => {
-      if (child instanceof THREE.DirectionalLight) {
-        child.visible = !child.visible;
-      }
-    });
+  const handleIncreasePitch = () => {
+    if (mapRef.current) {
+      const currentPitch = mapRef.current.getPitch();
+      mapRef.current.setPitch(Math.min(currentPitch + 10, 85));
+    }
   };
 
-  const exportScreenshot = () => {
-    if (!rendererRef.current) return;
-
-    const canvas = rendererRef.current.domElement;
-    const link = document.createElement("a");
-    link.download = `mapbox-3d-${Date.now()}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+  const handleDecreasePitch = () => {
+    if (mapRef.current) {
+      const currentPitch = mapRef.current.getPitch();
+      mapRef.current.setPitch(Math.max(currentPitch - 10, 0));
+    }
   };
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
 
-      {mouseCoords && (
-        <div
-          style={{
-            position: "absolute",
-            top: 16,
-            left: 16,
-            backgroundColor: "rgba(0, 0, 0, 0.85)",
-            color: "#fff",
-            padding: "12px 16px",
-            borderRadius: "6px",
-            fontFamily: "monospace",
-            fontSize: "13px",
-            zIndex: 1000,
-            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3)",
-            border: "1px solid #2e89ff",
-            display: "flex",
-            gap: "16px",
-          }}
-        >
-          <div>
-            <span style={{ color: "#60a5fa" }}>Lng:</span>{" "}
-            <span style={{ fontWeight: "bold" }}>
-              {mouseCoords.lng.toFixed(6)}
-            </span>
-          </div>
-          <div>
-            <span style={{ color: "#60a5fa" }}>Lat:</span>{" "}
-            <span style={{ fontWeight: "bold" }}>
-              {mouseCoords.lat.toFixed(6)}
-            </span>
-          </div>
-        </div>
-      )}
-
-      <div
-        style={{
-          position: "absolute",
-          bottom: 16,
-          left: 16,
-          backgroundColor: "rgba(0, 0, 0, 0.9)",
-          border: "1px solid #2e89ff",
-          borderRadius: "8px",
-          padding: "12px",
-          display: "flex",
-          gap: "8px",
-          flexWrap: "wrap",
-          maxWidth: "600px",
-          zIndex: 999,
-          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.5)",
-        }}
-      >
+      {/* Action Bar */}
+      <div className="action-bar">
         <button
-          onClick={() => scaleModel(1)}
+          className="action-button"
+          onClick={handleZoomIn}
           disabled={isAnimating}
-          style={{
-            padding: "8px 12px",
-            backgroundColor: "#2e89ff",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: isAnimating ? "not-allowed" : "pointer",
-            fontSize: "12px",
-            fontWeight: "bold",
-            opacity: isAnimating ? 0.5 : 1,
-          }}
         >
-          Scale Up
+          🔍+ Zoom In
         </button>
         <button
-          onClick={() => scaleModel(-1)}
+          className="action-button"
+          onClick={handleZoomOut}
           disabled={isAnimating}
-          style={{
-            padding: "8px 12px",
-            backgroundColor: "#2e89ff",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: isAnimating ? "not-allowed" : "pointer",
-            fontSize: "12px",
-            fontWeight: "bold",
-            opacity: isAnimating ? 0.5 : 1,
-          }}
         >
-          Scale Down
-        </button>
-        <button
-          onClick={resetScale}
-          disabled={isAnimating}
-          style={{
-            padding: "8px 12px",
-            backgroundColor: "#555",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: isAnimating ? "not-allowed" : "pointer",
-            fontSize: "12px",
-            fontWeight: "bold",
-            opacity: isAnimating ? 0.5 : 1,
-          }}
-        >
-          Reset Scale
+          🔍- Zoom Out
         </button>
 
-        <div
-          style={{ width: "100%", height: "1px", backgroundColor: "#2e89ff" }}
-        />
+        <div style={{ width: "100%", height: "1px", backgroundColor: "#2e89ff" }} />
 
         <button
-          onClick={droneFlyCameraPath}
+          className="action-button"
+          onClick={handleIncreasePitch}
           disabled={isAnimating}
-          style={{
-            padding: "8px 12px",
-            backgroundColor: "#22c55e",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: isAnimating ? "not-allowed" : "pointer",
-            fontSize: "12px",
-            fontWeight: "bold",
-            opacity: isAnimating ? 0.5 : 1,
-          }}
         >
-          Drone Flight
+          ⬆️ Pitch Up
         </button>
         <button
-          onClick={rotateCamera}
+          className="action-button"
+          onClick={handleDecreasePitch}
           disabled={isAnimating}
-          style={{
-            padding: "8px 12px",
-            backgroundColor: "#f59e0b",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: isAnimating ? "not-allowed" : "pointer",
-            fontSize: "12px",
-            fontWeight: "bold",
-            opacity: isAnimating ? 0.5 : 1,
-          }}
         >
-          Rotate 360°
-        </button>
-        <button
-          onClick={resetCamera}
-          disabled={isAnimating}
-          style={{
-            padding: "8px 12px",
-            backgroundColor: "#555",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: isAnimating ? "not-allowed" : "pointer",
-            fontSize: "12px",
-            fontWeight: "bold",
-            opacity: isAnimating ? 0.5 : 1,
-          }}
-        >
-          Reset Camera
-        </button>
-        <button
-          onClick={cycleMaterialMode}
-          disabled={isAnimating}
-          style={{
-            padding: "8px 12px",
-            backgroundColor: "#8b5cf6",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: isAnimating ? "not-allowed" : "pointer",
-            fontSize: "12px",
-            fontWeight: "bold",
-            opacity: isAnimating ? 0.5 : 1,
-          }}
-        >
-          🎨 Material:{" "}
-          {materialMode === "original"
-            ? "Default"
-            : materialMode === "heatmap"
-            ? "Heatmap"
-            : "X-Ray"}
-        </button>
-        <button
-          onClick={toggleLighting}
-          disabled={isAnimating}
-          style={{
-            padding: "8px 12px",
-            backgroundColor: "#ec4899",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: isAnimating ? "not-allowed" : "pointer",
-            fontSize: "12px",
-            fontWeight: "bold",
-            opacity: isAnimating ? 0.5 : 1,
-          }}
-        >
-          💡 Toggle Lights
-        </button>
-        <button
-          onClick={exportScreenshot}
-          disabled={isAnimating}
-          style={{
-            padding: "8px 12px",
-            backgroundColor: "#06b6d4",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: isAnimating ? "not-allowed" : "pointer",
-            fontSize: "12px",
-            fontWeight: "bold",
-            opacity: isAnimating ? 0.5 : 1,
-          }}
-        >
-          📸 Screenshot
+          ⬇️ Pitch Down
         </button>
 
-        <div
-          style={{ width: "100%", height: "1px", backgroundColor: "#2e89ff" }}
-        />
+        <div style={{ width: "100%", height: "1px", backgroundColor: "#2e89ff" }} />
 
-        <div
-          style={{
-            display: "flex",
-            gap: "8px",
-            alignItems: "center",
-            color: "#fff",
-            fontSize: "12px",
-            flexWrap: "wrap",
-          }}
+        <button
+          className="action-button"
+          onClick={handleCameraRotate}
+          disabled={isAnimating}
         >
-          <span style={{ fontWeight: "bold", color: "#60a5fa" }}>Layers:</span>
-          <button
-            onClick={() => setShowModels((v) => !v)}
-            style={{
-              padding: "8px 12px",
-              backgroundColor: showModels ? "#2e89ff" : "#444",
-              color: "white",
-              border: "1px solid #2e89ff",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontSize: "12px",
-              fontWeight: "bold",
-              boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
-            }}
-          >
-            {showModels ? "Hide" : "Show"} 3D Models
-          </button>
-          <button
-            onClick={() => setShowGeojson((v) => !v)}
-            style={{
-              padding: "8px 12px",
-              backgroundColor: showGeojson ? "#2e89ff" : "#444",
-              color: "white",
-              border: "1px solid #2e89ff",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontSize: "12px",
-              fontWeight: "bold",
-              boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
-            }}
-          >
-            {showGeojson ? "Hide" : "Show"} GeoJSON
-          </button>
-        </div>
+          🔄 Rotate 360°
+        </button>
+        <button
+          className="action-button"
+          onClick={handleDroneFlightPath}
+          disabled={isAnimating}
+        >
+          🚁 Drone Flight
+        </button>
+        <button
+          className="action-button secondary"
+          onClick={handleCameraReset}
+          disabled={isAnimating}
+        >
+          🏠 Reset View
+        </button>
 
         {isAnimating && (
           <div
             style={{
+              width: "100%",
+              color: "#fbbf24",
+              fontSize: "12px",
               display: "flex",
               alignItems: "center",
               gap: "8px",
-              color: "#fbbf24",
-              fontSize: "12px",
             }}
           >
-            Animation in progress...
+            ⏳ Animation en cours...
           </div>
         )}
       </div>
-      {pickedInfo && (
-        <div
-          style={{
-            position: "absolute",
-            top: 16,
-            right: 16,
-            backgroundColor: "rgba(0, 0, 0, 0.85)",
-            color: "#fff",
-            padding: "16px",
-            borderRadius: "8px",
-            fontFamily: "monospace",
-            fontSize: "13px",
-            maxWidth: "350px",
-            zIndex: 1000,
-            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.5)",
-            border: "1px solid #2e89ff",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "12px",
-              paddingBottom: "8px",
-              borderBottom: "1px solid #2e89ff",
-            }}
-          >
-            <strong>Building Information</strong>
-            <button
-              onClick={() => setPickedInfo(null)}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#2e89ff",
-                cursor: "pointer",
-                fontSize: "16px",
-                padding: "0 4px",
-              }}
-            >
-              ✕
-            </button>
-          </div>
-          <div style={{ lineHeight: "1.6" }}>
-            <div>
-              <span style={{ color: "#60a5fa" }}>UUID:</span>
-              <br />
-              <span style={{ wordBreak: "break-all" }}>
-                {pickedInfo.uuid.slice(0, 20)}…
-              </span>
-            </div>
-            <div style={{ marginTop: "8px" }}>
-              <span style={{ color: "#60a5fa" }}>Name:</span>
-              <br />
-              <span>{pickedInfo.name}</span>
-            </div>
-            <div style={{ marginTop: "8px" }}>
-              <span style={{ color: "#60a5fa" }}>Coordinates:</span>
-              <br />
-              <span>Lng: {pickedInfo.lon?.toFixed(6)}</span>
-              <br />
-              <span>Lat: {pickedInfo.lat?.toFixed(6)}</span>
-            </div>
-            <div style={{ marginTop: "8px" }}>
-              <span style={{ color: "#60a5fa" }}>3D Position:</span>
-              <br />
-              <span>X: {pickedInfo.position.x.toFixed(2)}</span>
-              <br />
-              <span>Y: {pickedInfo.position.y.toFixed(2)}</span>
-              <br />
-              <span>Z: {pickedInfo.position.z.toFixed(2)}</span>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
-};
-
-export default MapBox;
+}
