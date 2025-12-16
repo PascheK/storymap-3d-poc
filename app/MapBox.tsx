@@ -25,10 +25,15 @@ const MapBox = () => {
   const cameraRef = useRef<THREE.Camera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const originalMaterialsRef = useRef<Map<string, THREE.Material>>(new Map());
+  const hoveredBuildingIdRef = useRef<string | number | null>(null);
   const [pickedInfo, setPickedInfo] = useState<PickInfo | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
   const [mouseCoords, setMouseCoords] = useState<MouseCoordinates | null>(null);
-  const [materialMode, setMaterialMode] = useState<'original' | 'heatmap' | 'xray'>('original');
+  const [materialMode, setMaterialMode] = useState<
+    "original" | "heatmap" | "xray"
+  >("original");
+  const [showModels, setShowModels] = useState(true);
+  const [showGeojson, setShowGeojson] = useState(true);
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -50,12 +55,13 @@ const MapBox = () => {
           showLandmarkIconLabels: false,
         },
       },
+
       zoom: 18,
       center: [32.55, 15.51666667],
       pitch: 60,
       antialias: true,
     });
-    const modelOrigin: [number, number] =  [32.55, 15.51666667];
+    const modelOrigin: [number, number] = [32.55, 15.51666667];
     const modelAltitude = 0;
     const modelRotate = [Math.PI / 2, 0, 0];
 
@@ -100,26 +106,32 @@ const MapBox = () => {
         modelGroup = new THREE.Group();
         modelGroup.add(gltf.scene);
         scene.add(modelGroup);
-        
+
         // Store original materials
         gltf.scene.traverse((child) => {
           if (child instanceof THREE.Mesh && child.material) {
-            originalMaterialsRef.current.set(child.uuid, child.material.clone());
+            originalMaterialsRef.current.set(
+              child.uuid,
+              child.material.clone()
+            );
           }
         });
-        
+
         scene.updateMatrixWorld(true);
       });
       loader.load("/models/OID_2/esriGeometryMultiPatch.glb", (gltf) => {
         scene.add(gltf.scene);
-        
+
         // Store original materials
         gltf.scene.traverse((child) => {
           if (child instanceof THREE.Mesh && child.material) {
-            originalMaterialsRef.current.set(child.uuid, child.material.clone());
+            originalMaterialsRef.current.set(
+              child.uuid,
+              child.material.clone()
+            );
           }
         });
-        
+
         scene.updateMatrixWorld(true);
       });
       const renderer = new THREE.WebGLRenderer({
@@ -267,16 +279,139 @@ const MapBox = () => {
     };
 
     map.on("style.load", () => {
-      const customLayer = createCustomLayer(
-        map
-      ) as unknown as mapboxgl.CustomLayerInterface;
-      map.addLayer(customLayer);
+      // Add GeoJSON source for buildings (public/models/...)
+      if (!map.getSource("geojson-data")) {
+        map.addSource("geojson-data", {
+          type: "geojson",
+          data: "/models/all_buildings__FeaturesToJSO.geojson",
+        });
+      }
+
+      // Add a fill-extrusion layer to render buildings with their polygon footprint and height
+      if (!map.getLayer("geojson-data-buildings")) {
+        map.addLayer({
+          id: "geojson-data-buildings",
+          type: "fill-extrusion",
+          source: "geojson-data",
+          paint: {
+            // Extrude using height property; amplify small values for visibility
+            "fill-extrusion-height": [
+              "*",
+              ["coalesce", ["get", "height"], 1],
+              
+            ],
+            "fill-extrusion-base": 0,
+            "fill-extrusion-color": [
+              "case",
+              ["boolean", ["feature-state", "hover"], false],
+              "#2e89ff",
+              [
+                "match",
+                ["get", "status"],
+                "undamaged",
+                "#3cb371",
+                "damaged",
+                "#f59e0b",
+                "destroyed",
+                "#ef4444",
+                "#2e89ff",
+              ],
+            ],
+            "fill-extrusion-opacity": 0.9,
+          },
+        });
+      }
+
+      // Log when the source is actually loaded
+      map.once("sourcedata", (e) => {
+        if (e.sourceId === "geojson-data" && e.isSourceLoaded) {
+          console.log("GeoJSON source loaded: geojson-data");
+        }
+      });
+
+      // Highlight + click for GeoJSON buildings
+      map.on("mousemove", "geojson-data-buildings", (e) => {
+        const feature = e.features && e.features[0];
+        if (!feature || feature.id === undefined) return;
+
+        // Update mouse coords for UI
+        setMouseCoords({ lng: e.lngLat.lng, lat: e.lngLat.lat });
+
+        // Clear previous hover
+        if (hoveredBuildingIdRef.current !== null) {
+          map.setFeatureState(
+            { source: "geojson-data", id: hoveredBuildingIdRef.current },
+            { hover: false }
+          );
+        }
+
+        hoveredBuildingIdRef.current = feature.id as string | number;
+        map.setFeatureState(
+          { source: "geojson-data", id: hoveredBuildingIdRef.current },
+          { hover: true }
+        );
+      });
+
+      map.on("mouseleave", "geojson-data-buildings", () => {
+        if (hoveredBuildingIdRef.current !== null) {
+          map.setFeatureState(
+            { source: "geojson-data", id: hoveredBuildingIdRef.current },
+            { hover: false }
+          );
+          hoveredBuildingIdRef.current = null;
+        }
+      });
+
+      map.on("click", "geojson-data-buildings", (e) => {
+        const feature = e.features && e.features[0];
+        if (!feature) return;
+        const props = feature.properties || {};
+        setPickedInfo({
+          uuid: String(feature.id ?? "unknown"),
+          name: props.tor_category || "Building",
+          position: {
+            x: 0,
+            y: 0,
+            z: props.height || 0,
+          },
+          lon: e.lngLat.lng,
+          lat: e.lngLat.lat,
+        });
+      });
+
+      // Add the Three.js custom layer for 3D models
+      if (!map.getLayer("3d-model")) {
+        map.addLayer(createCustomLayer(map) as mapboxgl.CustomLayerInterface);
+      }
     });
 
     mapRef.current = map as mapboxgl.Map;
 
     return () => map.remove();
   }, []);
+
+  // Sync layer visibility with toggles
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const geoLayerId = "geojson-data-buildings";
+    if (map.getLayer(geoLayerId)) {
+      map.setLayoutProperty(geoLayerId, "visibility", showGeojson ? "visible" : "none");
+      if (!showGeojson && hoveredBuildingIdRef.current !== null) {
+        map.setFeatureState(
+          { source: "geojson-data", id: hoveredBuildingIdRef.current },
+          { hover: false }
+        );
+        hoveredBuildingIdRef.current = null;
+      }
+    }
+
+    const modelLayerId = "3d-model";
+    if (map.getLayer(modelLayerId)) {
+      map.setLayoutProperty(modelLayerId, "visibility", showModels ? "visible" : "none");
+    }
+  }, [showGeojson, showModels]);
 
   // Dev tools actions
   const scaleModel = (direction: number) => {
@@ -366,20 +501,24 @@ const MapBox = () => {
 
   const cycleMaterialMode = () => {
     if (!sceneRef.current) return;
-    
-    const modes: Array<'original' | 'heatmap' | 'xray'> = ['original', 'heatmap', 'xray'];
+
+    const modes: Array<"original" | "heatmap" | "xray"> = [
+      "original",
+      "heatmap",
+      "xray",
+    ];
     const currentIndex = modes.indexOf(materialMode);
     const nextMode = modes[(currentIndex + 1) % modes.length];
-    
+
     sceneRef.current.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        if (nextMode === 'original') {
+        if (nextMode === "original") {
           // Restore original material
           const original = originalMaterialsRef.current.get(child.uuid);
           if (original) {
             child.material = original.clone();
           }
-        } else if (nextMode === 'heatmap') {
+        } else if (nextMode === "heatmap") {
           // Heatmap gradient material
           child.material = new THREE.MeshStandardMaterial({
             color: new THREE.Color().setHSL(Math.random(), 0.8, 0.5),
@@ -388,7 +527,7 @@ const MapBox = () => {
             metalness: 0.3,
             roughness: 0.7,
           });
-        } else if (nextMode === 'xray') {
+        } else if (nextMode === "xray") {
           // X-ray transparent material
           child.material = new THREE.MeshPhongMaterial({
             color: 0x00ffff,
@@ -400,13 +539,13 @@ const MapBox = () => {
         }
       }
     });
-    
+
     setMaterialMode(nextMode);
   };
 
   const toggleLighting = () => {
     if (!sceneRef.current) return;
-    
+
     sceneRef.current.children.forEach((child) => {
       if (child instanceof THREE.DirectionalLight) {
         child.visible = !child.visible;
@@ -416,11 +555,11 @@ const MapBox = () => {
 
   const exportScreenshot = () => {
     if (!rendererRef.current) return;
-    
+
     const canvas = rendererRef.current.domElement;
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.download = `mapbox-3d-${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
+    link.href = canvas.toDataURL("image/png");
     link.click();
   };
 
@@ -450,11 +589,15 @@ const MapBox = () => {
         >
           <div>
             <span style={{ color: "#60a5fa" }}>Lng:</span>{" "}
-            <span style={{ fontWeight: "bold" }}>{mouseCoords.lng.toFixed(6)}</span>
+            <span style={{ fontWeight: "bold" }}>
+              {mouseCoords.lng.toFixed(6)}
+            </span>
           </div>
           <div>
             <span style={{ color: "#60a5fa" }}>Lat:</span>{" "}
-            <span style={{ fontWeight: "bold" }}>{mouseCoords.lat.toFixed(6)}</span>
+            <span style={{ fontWeight: "bold" }}>
+              {mouseCoords.lat.toFixed(6)}
+            </span>
           </div>
         </div>
       )}
@@ -526,10 +669,12 @@ const MapBox = () => {
             opacity: isAnimating ? 0.5 : 1,
           }}
         >
-         Reset Scale
+          Reset Scale
         </button>
 
-        <div style={{ width: "100%", height: "1px", backgroundColor: "#2e89ff" }} />
+        <div
+          style={{ width: "100%", height: "1px", backgroundColor: "#2e89ff" }}
+        />
 
         <button
           onClick={droneFlyCameraPath}
@@ -563,7 +708,7 @@ const MapBox = () => {
             opacity: isAnimating ? 0.5 : 1,
           }}
         >
-           Rotate 360°
+          Rotate 360°
         </button>
         <button
           onClick={resetCamera}
@@ -597,7 +742,12 @@ const MapBox = () => {
             opacity: isAnimating ? 0.5 : 1,
           }}
         >
-          🎨 Material: {materialMode === 'original' ? 'Default' : materialMode === 'heatmap' ? 'Heatmap' : 'X-Ray'}
+          🎨 Material:{" "}
+          {materialMode === "original"
+            ? "Default"
+            : materialMode === "heatmap"
+            ? "Heatmap"
+            : "X-Ray"}
         </button>
         <button
           onClick={toggleLighting}
@@ -634,6 +784,57 @@ const MapBox = () => {
           📸 Screenshot
         </button>
 
+        <div
+          style={{ width: "100%", height: "1px", backgroundColor: "#2e89ff" }}
+        />
+
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            alignItems: "center",
+            color: "#fff",
+            fontSize: "12px",
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontWeight: "bold", color: "#60a5fa" }}>
+            Layers:
+          </span>
+          <button
+            onClick={() => setShowModels((v) => !v)}
+            style={{
+              padding: "8px 12px",
+              backgroundColor: showModels ? "#2e89ff" : "#444",
+              color: "white",
+              border: "1px solid #2e89ff",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "12px",
+              fontWeight: "bold",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+            }}
+          >
+            {showModels ? "Hide" : "Show"} 3D Models
+          </button>
+          <button
+            onClick={() => setShowGeojson((v) => !v)}
+            style={{
+              padding: "8px 12px",
+              backgroundColor: showGeojson ? "#2e89ff" : "#444",
+              color: "white",
+              border: "1px solid #2e89ff",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "12px",
+              fontWeight: "bold",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+            }}
+          >
+            {showGeojson ? "Hide" : "Show"} GeoJSON
+          </button>
+        </div>
+
         {isAnimating && (
           <div
             style={{
@@ -644,7 +845,7 @@ const MapBox = () => {
               fontSize: "12px",
             }}
           >
-           Animation in progress...
+            Animation in progress...
           </div>
         )}
       </div>
