@@ -96,13 +96,74 @@ export default function KhartoumBuildingsMap() {
               "#ffffff",
               [
                 "match",
-                ["get", "status"],
-                "undamaged",
-                "#2ecc71",
-                "damaged",
-                "#f39c12",
-                "destroyed",
-                "#e74c3c",
+                ["get", "tor_category"],
+
+                // Building
+                "building",
+                [
+                  "match",
+                  ["get", "status"],
+                  "damaged",
+                  "#ff2f00", // red
+                  "undamaged",
+                  "#ffffff", // white
+                  "unknown",
+                  "#ededed", // light gray
+                  "#ededed",
+                ],
+
+                // Education
+                "education",
+                [
+                  "match",
+                  ["get", "status"],
+                  "damaged",
+                  "#00a83c", // green damaged
+                  "undamaged",
+                  "#00d24d", // light green undamaged
+                  "#00d24d",
+                ],
+
+                // Health
+                "health",
+                [
+                  "match",
+                  ["get", "status"],
+                  "damaged",
+                  "#ff7f00", // orange damaged
+                  "undamaged",
+                  "#ffd200", // yellow undamaged
+                  "#ffd200",
+                ],
+
+                // Power
+                "power",
+                [
+                  "match",
+                  ["get", "status"],
+                  "damaged",
+                  "#ff9900", // orange damaged
+                  "undamaged",
+                  "#ffd640", // yellow undamaged
+                  "#ffd640",
+                ],
+
+                // Waste
+                "waste",
+                "#b0724f", // brown undamaged (only state shown)
+
+                // Water
+                "water",
+                [
+                  "match",
+                  ["get", "status"],
+                  "damaged",
+                  "#00b7ff", // cyan damaged
+                  "undamaged",
+                  "#0099ff", // cyan undamaged
+                  "#0099ff",
+                ],
+
                 /* default */ "#95a5a6",
               ],
             ],
@@ -160,9 +221,9 @@ export default function KhartoumBuildingsMap() {
         const p = (f.properties || {}) as Record<string, unknown>;
         const objectId = p.OBJECTID ?? f.id ?? "—";
         const status = p.status ?? "—";
-        // const category = p.tor_category ?? "—";
+        const category = p.tor_category ?? "—";
         const height = p.height ?? "—";
-        // <div class="building-popup-row"><span class="building-popup-label">Category:</span> ${category}</div>
+
         new mapboxgl.Popup({ closeButton: true, closeOnClick: true })
           .setLngLat(e.lngLat)
           .setHTML(
@@ -172,6 +233,7 @@ export default function KhartoumBuildingsMap() {
               <div class="building-popup-row"><span class="building-popup-label">OBJECTID:</span> ${objectId}</div>
               <div class="building-popup-row"><span class="building-popup-label">Status:</span> ${status}</div>     
               <div class="building-popup-row"><span class="building-popup-label">Height:</span> ${height}</div>
+              <div class="building-popup-row"><span class="building-popup-label">Category:</span> ${category}</div>
             </div>
           `
           )
@@ -319,7 +381,9 @@ export default function KhartoumBuildingsMap() {
           🔍- Zoom Out
         </button>
 
-        <div style={{ width: "100%", height: "1px", backgroundColor: "#2e89ff" }} />
+        <div
+          style={{ width: "100%", height: "1px", backgroundColor: "#2e89ff" }}
+        />
 
         <button
           className="action-button"
@@ -336,7 +400,9 @@ export default function KhartoumBuildingsMap() {
           ⬇️ Pitch Down
         </button>
 
-        <div style={{ width: "100%", height: "1px", backgroundColor: "#2e89ff" }} />
+        <div
+          style={{ width: "100%", height: "1px", backgroundColor: "#2e89ff" }}
+        />
 
         <button
           className="action-button"
