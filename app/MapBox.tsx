@@ -13,6 +13,17 @@ const LAYER_ID = "khartoum-3d";
 // Tu peux ajuster (tes heights semblent petites dans l'échantillon)
 const HEIGHT_SCALE = 1;
 
+const CATEGORIES = [
+  "building",
+  "education",
+  "health",
+  "power",
+  "waste",
+  "water",
+];
+
+const STATUSES = ["damaged", "undamaged", "unknown"];
+
 export default function KhartoumBuildingsMap() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -20,6 +31,13 @@ export default function KhartoumBuildingsMap() {
   // Pour hover highlight
   const hoveredIdRef = useRef<number | null>(null);
   const [isAnimating, setIsAnimating] = React.useState(false);
+  const [selectedCategories, setSelectedCategories] = React.useState<
+    Set<string>
+  >(new Set(CATEGORIES));
+  const [selectedStatuses, setSelectedStatuses] = React.useState<Set<string>>(
+    new Set(STATUSES)
+  );
+  const [showFilterPanel, setShowFilterPanel] = React.useState(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -93,7 +111,7 @@ export default function KhartoumBuildingsMap() {
             "fill-extrusion-color": [
               "case",
               ["boolean", ["feature-state", "hover"], false],
-              "#ffffff",
+              "#95a5a6",
               [
                 "match",
                 ["get", "tor_category"],
@@ -178,7 +196,7 @@ export default function KhartoumBuildingsMap() {
             // Base (si tu as un champ baseHeight un jour, tu peux le mettre ici)
             "fill-extrusion-base": 0,
 
-            "fill-extrusion-opacity": 0.85,
+            "fill-extrusion-opacity": 1,
           },
         });
       }
@@ -273,6 +291,42 @@ export default function KhartoumBuildingsMap() {
       mapRef.current = null;
     };
   }, []);
+
+  // Appliquer les filtres quand la sélection change
+  React.useEffect(() => {
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+
+    if (!map.getLayer(LAYER_ID)) return;
+
+    // Construire le filtre
+    const categoryFilters = Array.from(selectedCategories);
+    const statusFilters = Array.from(selectedStatuses);
+
+    let filter: any = ["all"];
+
+    if (categoryFilters.length > 0) {
+      const categoryMatch: any = ["match", ["get", "tor_category"]];
+      categoryFilters.forEach((cat) => {
+        categoryMatch.push(cat);
+        categoryMatch.push(true);
+      });
+      categoryMatch.push(false); // default
+      filter.push(categoryMatch);
+    }
+
+    if (statusFilters.length > 0) {
+      const statusMatch: any = ["match", ["get", "status"]];
+      statusFilters.forEach((status) => {
+        statusMatch.push(status);
+        statusMatch.push(true);
+      });
+      statusMatch.push(false); // default
+      filter.push(statusMatch);
+    }
+
+    map.setFilter(LAYER_ID, filter.length > 1 ? filter : null);
+  }, [selectedCategories, selectedStatuses]);
 
   const handleCameraReset = () => {
     if (mapRef.current) {
@@ -439,6 +493,201 @@ export default function KhartoumBuildingsMap() {
           >
             ⏳ Animation en cours...
           </div>
+        )}
+      </div>
+
+      {/* Filter Panel */}
+      <div
+        style={{
+          position: "absolute",
+          top: 20,
+          right: 20,
+          background: "rgba(0, 0, 0, 0.85)",
+          border: "1px solid #2e89ff",
+          borderRadius: "8px",
+          padding: "12px",
+          maxWidth: "300px",
+          zIndex: 998,
+          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "12px",
+          }}
+        >
+          <h3
+            style={{
+              color: "#2e89ff",
+              fontSize: "14px",
+              fontWeight: "bold",
+              margin: 0,
+            }}
+          >
+            🔍 Filtres
+          </h3>
+          <button
+            onClick={() => setShowFilterPanel(!showFilterPanel)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#2e89ff",
+              cursor: "pointer",
+              fontSize: "16px",
+            }}
+          >
+            {showFilterPanel ? "✕" : "▼"}
+          </button>
+        </div>
+
+        {showFilterPanel && (
+          <>
+            {/* Filtre Catégories */}
+            <div style={{ marginBottom: "12px" }}>
+              <div
+                style={{
+                  color: "#60a5fa",
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                  marginBottom: "6px",
+                }}
+              >
+                Catégories
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                {CATEGORIES.map((cat) => (
+                  <label
+                    key={cat}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      color: "#fff",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedCategories.has(cat)}
+                      onChange={(e) => {
+                        const newCats = new Set(selectedCategories);
+                        if (e.target.checked) {
+                          newCats.add(cat);
+                        } else {
+                          newCats.delete(cat);
+                        }
+                        setSelectedCategories(newCats);
+                      }}
+                      style={{ cursor: "pointer" }}
+                    />
+                    {cat}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div
+              style={{
+                height: "1px",
+                backgroundColor: "#2e89ff",
+                marginBottom: "12px",
+              }}
+            />
+
+            {/* Filtre Statuts */}
+            <div style={{ marginBottom: "12px" }}>
+              <div
+                style={{
+                  color: "#60a5fa",
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                  marginBottom: "6px",
+                }}
+              >
+                Statuts
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                {STATUSES.map((status) => (
+                  <label
+                    key={status}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      color: "#fff",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedStatuses.has(status)}
+                      onChange={(e) => {
+                        const newStatuses = new Set(selectedStatuses);
+                        if (e.target.checked) {
+                          newStatuses.add(status);
+                        } else {
+                          newStatuses.delete(status);
+                        }
+                        setSelectedStatuses(newStatuses);
+                      }}
+                      style={{ cursor: "pointer" }}
+                    />
+                    {status}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Boutons de reset */}
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                marginTop: "12px",
+              }}
+            >
+              <button
+                onClick={() => setSelectedCategories(new Set(CATEGORIES))}
+                style={{
+                  flex: 1,
+                  padding: "6px",
+                  background: "#2e89ff",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  fontSize: "11px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                Reset Tous
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedCategories(new Set(CATEGORIES));
+                  setSelectedStatuses(new Set(STATUSES));
+                }}
+                style={{
+                  flex: 1,
+                  padding: "6px",
+                  background: "#666",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  fontSize: "11px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                Rafraîchir
+              </button>
+            </div>
+          </>
         )}
       </div>
     </div>
